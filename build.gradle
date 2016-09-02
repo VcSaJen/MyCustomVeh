@@ -1,9 +1,13 @@
+plugins {
+    id "com.jfrog.bintray" version "1.7.1"
+}
+
 group 'com.vcsajen'
 version '1.0-SNAPSHOT'
 
 apply plugin: 'java'
 
-sourceCompatibility = 1.5
+sourceCompatibility = 1.8
 
 repositories {
     mavenCentral()
@@ -14,7 +18,39 @@ repositories {
     }
 }
 
+def bintrayVersion = getVersion()+(System.getenv('TRAVIS') ? "."+System.getenv('TRAVIS_BUILD_NUMBER') : ".0")
+def bintrayProjName = rootProject.name
+setVersion(getVersion()+(System.getenv('TRAVIS') ? "."+System.getenv('TRAVIS_BUILD_NUMBER') : ".0")+(System.getenv('TRAVIS_TAG') ? "" : (System.getenv('TRAVIS') ? "-"+System.getenv('TRAVIS_COMMIT').take(7) : "")+"-SNAPSHOT"))
+
+def getSecret(String secretname){
+    def result = System.getenv(secretname)
+    if (result != null && result != "") return result;
+    def Properties props = new Properties()
+    props.load(new FileInputStream(new File('secrets.properties')))
+    return props[secretname]
+}
+
 dependencies {
     testCompile group: 'junit', name: 'junit', version: '4.11'
     compile 'org.spongepowered:spongeapi:5.0.0-SNAPSHOT'
+}
+
+bintray {
+    user = getSecret('BINTRAY_USER_NAME')
+    key = getSecret('BINTRAY_API_KEY')
+    configurations = ['archives']
+    pkg {
+        repo = 'generic'
+        name = 'MyCustomVeh'
+        publish = true
+        userOrg = user
+        licenses = ['MIT']
+        vcsUrl = 'https://github.com/VcSaJen/MyCustomVeh.git'
+        version {
+            name = bintrayVersion.toString()
+            desc = bintrayProjName.toString() + bintrayVersion.toString()
+            released = new Date()
+            vcsTag = System.getenv('TRAVIS_TAG') ? System.getenv('TRAVIS_TAG') : System.getenv('TRAVIS_COMMIT')
+        }
+    }
 }
