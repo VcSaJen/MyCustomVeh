@@ -1,3 +1,5 @@
+package com.vcsajen.mycustomveh;
+
 import com.google.inject.Inject;
 import org.spongepowered.api.event.Listener;
 import org.spongepowered.api.event.game.state.GameStartedServerEvent;
