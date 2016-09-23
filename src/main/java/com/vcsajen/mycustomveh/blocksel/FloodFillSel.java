@@ -2,8 +2,7 @@ package com.vcsajen.mycustomveh.blocksel;
 
 import com.flowpowered.math.vector.Vector3i;
 
-import java.util.ArrayDeque;
-import java.util.Deque;
+import java.util.*;
 
 /**
  * Flood fill for 3d <BR/>
@@ -14,14 +13,19 @@ import java.util.Deque;
 public class FloodFillSel {
 
     private static final Vector3i relFaces[] = {new Vector3i(0,1,0), new Vector3i(0,0,1), new Vector3i(0,-1,0), new Vector3i(0,0,-1)};
+    private static final Vector3i relEdges[] = {new Vector3i(0,1,1), new Vector3i(0,-1,1), new Vector3i(0,-1,-1), new Vector3i(0,1,-1)};
 
     static {
         //relFaces = {new Vector3i(0,1,0)};
 
     }
 
-    public FillResult floodFill(Vector3i seed, Vector3i maxSize, int maxVoxelCount, GetVoxel voxelGetter, SetVoxel voxelSetter)
+    public FillResult floodFill(Vector3i seed, Vector3i maxSize, int maxVoxelCount, Connectivity connectivity, GetVoxel voxelGetter, SetVoxel voxelSetter)
     {
+        List<Vector3i> relFacesAndEdges = new ArrayList<>(Arrays.asList(relFaces));
+        if (connectivity == Connectivity.CONN18 || connectivity == Connectivity.CONN26)
+            relFacesAndEdges.addAll(Arrays.asList(relEdges));
+
         Vector3i minCorner = new Vector3i(seed);
         Vector3i maxCorner = new Vector3i(seed);
         //boolean abort = false;
@@ -77,16 +81,20 @@ public class FloodFillSel {
             // neither a boundary nor the previously completely
             // filled one; if not, seed the scan line
             possave = pos;
-            for (Vector3i relFace: relFaces)
+            int i = 0;
+            for (Vector3i relFace: relFacesAndEdges)
             {
                 pos = possave;
                 pos = pos.add(relFace);
+                int ex=0; //used for checking more wide X range for CONN18 && CONN26
+                if ((connectivity==Connectivity.CONN18 && i<relFaces.length) || connectivity==Connectivity.CONN26)
+                    ex=1;
                 // start at the left extreme of the scan line
-                pos = new Vector3i(xleft, pos.getY(), pos.getZ());
+                pos = new Vector3i(xleft-ex, pos.getY(), pos.getZ());
                 // store the status of the first voxel
                 boolean firstVoxelStatus = voxelGetter.getVoxel(pos)==VoxelState.EMPTY;
                 pos = pos.add(1,0,0); //pos.x increased by 1;
-                while (pos.getX()<=xright)
+                while (pos.getX()<=xright+ex)
                 {
                     boolean secondVoxelStatus = voxelGetter.getVoxel(pos)==VoxelState.EMPTY;
                     //find the boundary between inside and outside voxels
@@ -97,6 +105,7 @@ public class FloodFillSel {
                 }
                 // check the last voxel
                 if (firstVoxelStatus) stack.push(pos.sub(1,0,0));
+                i++;
             }
 
         }

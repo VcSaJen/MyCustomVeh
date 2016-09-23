@@ -5,6 +5,7 @@ import com.flowpowered.math.vector.Vector3i;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.google.inject.Inject;
+import com.vcsajen.mycustomveh.blocksel.Connectivity;
 import com.vcsajen.mycustomveh.blocksel.FillResult;
 import com.vcsajen.mycustomveh.blocksel.FloodFillSel;
 import com.vcsajen.mycustomveh.blocksel.VoxelState;
@@ -84,7 +85,10 @@ public class MyCustomVeh {
                 if (fillbs.equals(pickedbs)) return;
 
                 FloodFillSel ffs = new FloodFillSel();
-                FillResult fr = ffs.floodFill(event.getTargetBlock().getPosition(), new Vector3i(5,10,5), 512,
+
+                Connectivity conn = Connectivity.CONN26;
+
+                FillResult fr = ffs.floodFill(event.getTargetBlock().getPosition(), new Vector3i(128,128,128), 4048, conn,
                         coord -> {
                             if (coord.getY()<0 || coord.getY()>254) return VoxelState.WALL;
                             if (player.getWorld().getBlock(coord).equals(pickedbs)) return VoxelState.EMPTY;
