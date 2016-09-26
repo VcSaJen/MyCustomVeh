@@ -18,20 +18,24 @@ import org.spongepowered.api.command.CommandResult;
 import org.spongepowered.api.command.CommandSource;
 import org.spongepowered.api.command.args.CommandContext;
 import org.spongepowered.api.command.spec.CommandSpec;
-import org.spongepowered.api.data.key.Key;
 import org.spongepowered.api.data.key.Keys;
 import org.spongepowered.api.data.manipulator.mutable.entity.BodyPartRotationalData;
+import org.spongepowered.api.data.persistence.DataFormats;
+import org.spongepowered.api.data.persistence.DataTranslators;
+import org.spongepowered.api.data.property.BooleanProperty;
+import org.spongepowered.api.data.property.DoubleProperty;
+import org.spongepowered.api.data.property.block.BlastResistanceProperty;
+import org.spongepowered.api.data.property.block.MatterProperty;
+import org.spongepowered.api.data.property.block.UnbreakableProperty;
 import org.spongepowered.api.data.type.BodyPart;
 import org.spongepowered.api.data.type.BodyParts;
 import org.spongepowered.api.entity.Entity;
 import org.spongepowered.api.entity.EntityTypes;
 import org.spongepowered.api.entity.living.ArmorStand;
-import org.spongepowered.api.entity.living.golem.Shulker;
 import org.spongepowered.api.entity.living.player.Player;
 import org.spongepowered.api.event.Listener;
 import org.spongepowered.api.event.block.InteractBlockEvent;
 import org.spongepowered.api.event.cause.Cause;
-import org.spongepowered.api.event.cause.entity.spawn.BlockSpawnCause;
 import org.spongepowered.api.event.cause.entity.spawn.EntitySpawnCause;
 import org.spongepowered.api.event.cause.entity.spawn.SpawnTypes;
 import org.spongepowered.api.event.filter.cause.First;
@@ -44,14 +48,20 @@ import org.slf4j.Logger;
 import org.spongepowered.api.plugin.PluginContainer;
 import org.spongepowered.api.text.Text;
 import org.spongepowered.api.text.format.TextColors;
+import org.spongepowered.api.world.BlockChangeFlag;
 import org.spongepowered.api.world.Location;
 import org.spongepowered.api.world.World;
+import org.spongepowered.api.world.extent.ArchetypeVolume;
 import org.spongepowered.api.world.extent.Extent;
+import org.spongepowered.api.world.schematic.BlockPaletteTypes;
+import org.spongepowered.api.world.schematic.Schematic;
 
-import java.util.Collection;
-import java.util.Optional;
-import java.util.Random;
-import java.util.Set;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.util.*;
+import java.util.zip.GZIPOutputStream;
+
+import static java.lang.Math.abs;
 
 /**
  * Main plugin class
@@ -69,42 +79,115 @@ public class MyCustomVeh {
     @Inject
     private PluginContainer myPlugin;
 
-    private boolean floodFillTest;
+    private int floodFillTest = 0;
+    private int floorLevel;
+
+    private Schematic schematic;
+
+    private boolean isWall(BlockState blockState) {
+        if (blockState.getType().equals(BlockTypes.AIR)) return true;
+
+        BlastResistanceProperty blastResist = blockState.getProperty(BlastResistanceProperty.class).orElse(null);
+        if (blastResist!=null)
+        {
+            if (DoubleProperty.greaterThanOrEqual(10000000).matches(blastResist)) return true;
+        }
+        UnbreakableProperty unbreak = blockState.getProperty(UnbreakableProperty.class).orElse(null);
+        if (unbreak!=null)
+        {
+            if (BooleanProperty.of(true).matches(unbreak)) return true;
+        }
+        MatterProperty matter = blockState.getProperty(MatterProperty.class).orElse(null);
+        if (matter!=null)
+        {
+            if (matter.getValue() == MatterProperty.Matter.LIQUID || matter.getValue() == MatterProperty.Matter.GAS) return true;
+        }
+
+        return false;
+    }
+
+    private boolean inBounds(Vector3i pos, Vector3i bounds)
+    {
+        return abs(pos.getX()) < bounds.getX() &&
+                abs(pos.getY()) < bounds.getY() &&
+                abs(pos.getZ()) < bounds.getZ();
+    }
 
     @Listener
     public void onInteractBlockSecondary(InteractBlockEvent.Secondary.MainHand event, @First Player player) {
         if (event.getInteractionPoint().isPresent())
         {
-            if (floodFillTest)
+            if (floodFillTest==1)
             {
-                floodFillTest=false;
-                player.sendMessage(Text.of("Fill attempt..."));
-                final BlockState fillbs = BlockState.builder().blockType(BlockTypes.GOLD_BLOCK).build();
-                final BlockState pickedbs = event.getTargetBlock().getState();
+                floorLevel = event.getTargetBlock().getPosition().getY();
+                floodFillTest = 2;
+                player.sendMessage(Text.of("Right click to fill (copy)"));
+                return;
+            }
+            if (floodFillTest==2)
+            {
+                floodFillTest=3;
+                player.sendMessage(Text.of("Fill (cut) attempt..."));
 
-                if (fillbs.equals(pickedbs)) return;
+                Vector3i maxSize = new Vector3i(20,20,20);
+                int maxBlockCount = 512;
+
+                Set<Vector3i> selectedBlocks = new HashSet<>(maxBlockCount);
+
+                Vector3i seedBlockPos = event.getTargetBlock().getPosition();
 
                 FloodFillSel ffs = new FloodFillSel();
 
-                Connectivity conn = Connectivity.CONN26;
+                Connectivity conn = Connectivity.CONN6;
 
-                FillResult fr = ffs.floodFill(event.getTargetBlock().getPosition(), new Vector3i(128,128,128), 4048, conn,
+                FillResult fr = ffs.floodFill(seedBlockPos, maxSize, maxBlockCount, conn,
                         coord -> {
-                            if (coord.getY()<0 || coord.getY()>254) return VoxelState.WALL;
-                            if (player.getWorld().getBlock(coord).equals(pickedbs)) return VoxelState.EMPTY;
-                            if (player.getWorld().getBlock(coord).equals(fillbs)) return VoxelState.FILLED;
+                            if (coord.getY()<=floorLevel || coord.getY()>254) return VoxelState.WALL;
+                            if (selectedBlocks.contains(coord)) return VoxelState.FILLED;
+                            if (!isWall(player.getWorld().getBlock(coord))) return VoxelState.EMPTY;
                             return VoxelState.WALL;
                         }, (coord, state) -> {
-                            if (state==VoxelState.FILLED) player.getWorld().setBlock(coord, fillbs, Cause.source(myPlugin).build());
+                            if (state==VoxelState.FILLED) {
+                                selectedBlocks.add(coord);
+                            }
                         });
 
                 switch (fr) {
-                    case SUCCESS:  player.sendMessage(Text.of(TextColors.GREEN, "Success!")); break;
+                    case SUCCESS:
+                        ffs.getLastMin();
+                        Vector3i center = ffs.getLastMax().sub(ffs.getLastMin()).div(2);
+                        Vector3i actualSize = ffs.getLastMax().sub(ffs.getLastMin()).add(1,1,1);
+                        Vector3i centerGlobal = center.add(ffs.getLastMin());
+                        ArchetypeVolume archetypeVolume = game.getRegistry().getExtentBufferFactory().createArchetypeVolume(actualSize, center);
+                        for (Vector3i coord: selectedBlocks) {
+                            Vector3i relcoord = coord.sub(centerGlobal);
+                            archetypeVolume.setBlock(relcoord, player.getWorld().getBlock(coord), Cause.source(myPlugin).build());
+                            player.getWorld().getTileEntity(coord).ifPresent(tileEntity ->
+                                    archetypeVolume.getTileEntityArchetypes().put(relcoord, tileEntity.createArchetype()));
+                        }
+
+                        schematic = Schematic.builder().volume(archetypeVolume).metaValue(Schematic.METADATA_AUTHOR, player.getName()).metaValue(Schematic.METADATA_NAME, "test").paletteType(BlockPaletteTypes.LOCAL).build();
+
+                        try {
+                            DataFormats.NBT.writeTo(new GZIPOutputStream(new FileOutputStream("test.schematic")), DataTranslators.SCHEMATIC.translate(schematic));
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+
+                        player.sendMessage(Text.of(TextColors.GREEN, "Success!"));
+                        player.sendMessage(Text.of("Right click to paste"));
+                        break;
                     case TOO_MANY_BLOCKS:  player.sendMessage(Text.of(TextColors.RED, "Fail! Too many blocks!")); break;
                     case TOO_TALL:  player.sendMessage(Text.of(TextColors.RED, "Fail! Too tall!")); break;
                     case TOO_WIDE:  player.sendMessage(Text.of(TextColors.RED, "Fail! Too wide!")); break;
                 }
-
+                return;
+            }
+            if (floodFillTest==3)
+            {
+                floodFillTest=0;
+                schematic.apply(player.getLocation().add(0,1,0), BlockChangeFlag.NONE, Cause.source(myPlugin).build());
+                player.sendMessage(Text.of(TextColors.GREEN, "Pasted!"));
             }
 
             //noinspection OptionalGetWithoutIsPresent
@@ -151,13 +234,21 @@ public class MyCustomVeh {
                 .build();
         game.getCommandManager().register(this, myCommandSpec, "armorstandtest", "astest");
         game.getCommandManager().register(this, myCommandSpec2, "floodfilltest", "fftest");
-        Sponge.getCommandManager().register(this, this.createArmourStandCommand, "createarmourstand");
     }
 
     private CommandResult cmdDbgFloodFillTest(CommandSource src, CommandContext commandContext) {
         if (src instanceof Player) {
-            floodFillTest=true;
-            src.sendMessage(Text.of("Right click to fill"));
+            if (floodFillTest == 0)
+            {
+                floodFillTest = 1;
+                src.sendMessage(Text.of("Right click on floor"));
+                return CommandResult.success();
+            }
+            if (floodFillTest == 1)
+            {
+
+                return CommandResult.success();
+            }
         }
         return CommandResult.success();
     }
@@ -178,46 +269,21 @@ public class MyCustomVeh {
             armst.tryOffer(Keys.ARMOR_STAND_HAS_GRAVITY, false);
             //armst.tryOffer(Keys.INVISIBLE, true);
             ((ArmorStand) armst).setHelmet(ItemStack.of(ItemTypes.BOOKSHELF,1));
-            //((ArmorStand) armst).getBodyPartRotationalData().partRotation().put(BodyParts.HEAD, new Vector3d(0,0,90));
-            BodyPartRotationalData data = Sponge.getDataManager().getManipulatorBuilder(BodyPartRotationalData.class).get().create();
 
-            data.partRotation().putAll(Maps.asMap(Sets.newHashSet(Sponge.getRegistry().getAllOf(BodyPart.class)), k -> new Vector3d(45, 45, 45)));
-            //data.partRotation().put(BodyParts.HEAD, new Vector3d(0,0,90));
-            logger.debug(armst.tryOffer(data).toString());
+            //noinspection OptionalGetWithoutIsPresent
+            Map<BodyPart, Vector3d> d = armst.get(Keys.BODY_ROTATIONS).get();
+            d.replace(BodyParts.HEAD, new Vector3d(0,0,45));
+            armst.tryOffer(Keys.BODY_ROTATIONS, d);
 
-            //((ArmorStand) armst).setHeadRotation(new Vector3d(1,1,1));
-            //((ArmorStand) armst).getInventory().
-            //if (optional.isPresent()) {
             boolean success = extent.spawnEntity(armst,
                         Cause.source(EntitySpawnCause.builder()
                                 .entity(armst).type(SpawnTypes.PLUGIN).build()).build());
-            //}
 
-            if (!success) ((Player) src).sendMessage(Text.of("fail!"));
+            if (!success) src.sendMessage(Text.of("fail!"));
         }
 
         return CommandResult.success();
     }
-
-    public final CommandCallable createArmourStandCommand = CommandSpec.builder()
-            .description(Text.of("Creates a new armour stand in a random position"))
-            .executor((src, args) -> {
-                if (src instanceof Player) {
-                    Player player = (Player) src;
-                    World world = player.getWorld();
-
-                    Entity entity = world.createEntity(EntityTypes.ARMOR_STAND, player.getLocation().getPosition());
-                    BodyPartRotationalData data = Sponge.getDataManager().getManipulatorBuilder(BodyPartRotationalData.class).get().create();
-                    Random random = new Random();
-                    data.partRotation().putAll(Maps.asMap(Sets.newHashSet(Sponge.getRegistry().getAllOf(BodyPart.class)), k -> new Vector3d(random.nextDouble() * 360, random.nextDouble() * 360, random.nextDouble() * 360)));
-                    System.out.println(entity.offer(data));
-
-                    world.spawnEntity(entity, Cause.source(EntitySpawnCause.builder()
-                            .entity(entity).type(SpawnTypes.PLUGIN).build()).build());
-                }
-                return CommandResult.success();
-            })
-            .build();
 
     @Listener
     public void onServerStart(GameStartedServerEvent event) {
@@ -225,6 +291,9 @@ public class MyCustomVeh {
         logger.debug("HI! MY PLUGIN IS WORKING!");
         logger.debug("*************************");
         logger.debug("Minecraft Version: " + game.getPlatform().getMinecraftVersion().getName());
+
+
+
     }
 
 }

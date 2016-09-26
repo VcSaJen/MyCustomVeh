@@ -15,9 +15,22 @@ public class FloodFillSel {
     private static final Vector3i relFaces[] = {new Vector3i(0,1,0), new Vector3i(0,0,1), new Vector3i(0,-1,0), new Vector3i(0,0,-1)};
     private static final Vector3i relEdges[] = {new Vector3i(0,1,1), new Vector3i(0,-1,1), new Vector3i(0,-1,-1), new Vector3i(0,1,-1)};
 
+    private Vector3i lastMin;
+    private Vector3i lastMax;
+
     static {
         //relFaces = {new Vector3i(0,1,0)};
 
+    }
+
+    public Vector3i getLastMin()
+    {
+        return lastMin;
+    }
+
+    public Vector3i getLastMax()
+    {
+        return lastMax;
     }
 
     public FillResult floodFill(Vector3i seed, Vector3i maxSize, int maxVoxelCount, Connectivity connectivity, GetVoxel voxelGetter, SetVoxel voxelSetter)
@@ -109,6 +122,8 @@ public class FloodFillSel {
             }
 
         }
+        lastMin = minCorner;
+        lastMax = maxCorner;
         return FillResult.SUCCESS;
     }
 
