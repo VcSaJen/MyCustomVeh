@@ -9,6 +9,7 @@ import com.vcsajen.mycustomveh.blocksel.Connectivity;
 import com.vcsajen.mycustomveh.blocksel.FillResult;
 import com.vcsajen.mycustomveh.blocksel.FloodFillSel;
 import com.vcsajen.mycustomveh.blocksel.VoxelState;
+import com.vcsajen.mycustomveh.dynblocks.DynBlockSingle;
 import org.spongepowered.api.Game;
 import org.spongepowered.api.Sponge;
 import org.spongepowered.api.block.BlockState;
@@ -17,6 +18,7 @@ import org.spongepowered.api.command.CommandCallable;
 import org.spongepowered.api.command.CommandResult;
 import org.spongepowered.api.command.CommandSource;
 import org.spongepowered.api.command.args.CommandContext;
+import org.spongepowered.api.command.args.GenericArguments;
 import org.spongepowered.api.command.spec.CommandSpec;
 import org.spongepowered.api.data.key.Keys;
 import org.spongepowered.api.data.manipulator.mutable.entity.BodyPartRotationalData;
@@ -47,6 +49,7 @@ import org.spongepowered.api.plugin.Plugin;
 import org.slf4j.Logger;
 import org.spongepowered.api.plugin.PluginContainer;
 import org.spongepowered.api.text.Text;
+import org.spongepowered.api.text.action.TextActions;
 import org.spongepowered.api.text.format.TextColors;
 import org.spongepowered.api.world.BlockChangeFlag;
 import org.spongepowered.api.world.Location;
@@ -232,8 +235,14 @@ public class MyCustomVeh {
                 .description(Text.of("test"))
                 .executor(this::cmdDbgFloodFillTest)
                 .build();
+        CommandSpec myCommandSpecSingleBlockTest = CommandSpec.builder()
+                .description(Text.of("single block test"))
+                .arguments(GenericArguments.optional(GenericArguments.seq(GenericArguments.vector3d(Text.of("Rotation")), GenericArguments.string(Text.of("Relative or absolute"))) ))
+                .executor(this::cmdDbgBlockSingleTest)
+                .build();
         game.getCommandManager().register(this, myCommandSpec, "armorstandtest", "astest");
         game.getCommandManager().register(this, myCommandSpec2, "floodfilltest", "fftest");
+        game.getCommandManager().register(this, myCommandSpecSingleBlockTest, "blocksingletest", "bstest");
     }
 
     private CommandResult cmdDbgFloodFillTest(CommandSource src, CommandContext commandContext) {
@@ -248,6 +257,42 @@ public class MyCustomVeh {
             {
 
                 return CommandResult.success();
+            }
+        }
+        return CommandResult.success();
+    }
+
+    DynBlockSingle singleBlock;
+
+    private Text textCmd(String msg, String cmd)
+    {
+        return Text.builder(msg).color(TextColors.DARK_AQUA).onClick(TextActions.runCommand(cmd)).build();
+    }
+
+    private CommandResult cmdDbgBlockSingleTest(CommandSource src, CommandContext commandContext) {
+        if(src instanceof Player) {
+            if (commandContext.hasAny("Rotation") && commandContext.hasAny("Relative or absolute")) {
+                //noinspection OptionalGetWithoutIsPresent
+                Vector3d rotation = commandContext.<Vector3d>getOne("Rotation").get();
+
+                //noinspection OptionalGetWithoutIsPresent
+                String relOrAbs = commandContext.<String>getOne("Relative or absolute").get();;
+
+                if (relOrAbs.equals("rel"))
+                {
+                    rotation = singleBlock.getRotation().add(rotation);
+                }
+
+                singleBlock.setRotation(rotation);
+            } else {
+                singleBlock = new DynBlockSingle(((Player) src).getLocation(), BlockState.builder().blockType(BlockTypes.FURNACE).build());
+
+                //((Player) src).getRotation()Location();
+                /*singleBlock.setCoord();*/
+                src.sendMessage(Text.join(textCmd("-90", "/bstest -90,0,0 rel"), textCmd(" -10", "/bstest -10,0,0 rel"), Text.of(" X "), textCmd("+10 ", "/bstest 10,0,0 rel"), textCmd("+90", "/bstest 90,0,0 rel")));
+                src.sendMessage(Text.join(textCmd("-90", "/bstest 0,-90,0 rel"), textCmd(" -10", "/bstest 0,-10,0 rel"), Text.of(" Y "), textCmd("+10 ", "/bstest 0,10,0 rel"), textCmd("+90", "/bstest 0,90,0 rel")));
+                src.sendMessage(Text.join(textCmd("-90", "/bstest 0,0,-90 rel"), textCmd(" -10", "/bstest 0,0,-10 rel"), Text.of(" Z "), textCmd("+10 ", "/bstest 0,0,10 rel"), textCmd("+90", "/bstest 0,0,90 rel")));
+                src.sendMessage(textCmd("reset", "/bstest 0 0 0 abs"));
             }
         }
         return CommandResult.success();

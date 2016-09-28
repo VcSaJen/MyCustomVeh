@@ -1,5 +1,8 @@
 package com.vcsajen.mycustomveh.dynblocks;
 
+import com.flowpowered.math.vector.Vector3d;
+import org.spongepowered.api.world.World;
+
 /**
  * Interface for all hierarchy elements who could have parent element.
  * Also have miscellaneous things for elements, like Update.
@@ -9,4 +12,9 @@ public interface ParentedElement {
     ChildedElement getParent();
     void setParent(ChildedElement elem);
     void updateTransformations();
+    Vector3d getPosition();
+    void setPosition(Vector3d position);
+    Vector3d getRotation();
+    void setRotation(Vector3d rotation);
+    World getWorld();
 }
